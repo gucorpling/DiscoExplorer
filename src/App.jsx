@@ -43,9 +43,169 @@ const DATASET_CONFIG = {
   "zho.rst.sctb": {uri: "zho.rst.sctb.json", hasSignals: false},
 };
 
-const LANG_FLAGS = {
-  ces: "🇨🇿", deu: "🇩🇪", eng: "🇺🇸", eus: "🇪🇸", fas: "🇮🇷", fra: "🇫🇷", ita: "🇮🇹", nld: "🇳🇱", 
-  pcm: "🇳🇬", pol: "🇵🇱", por: "🇵🇹", rus: "🇷🇺", spa: "🇪🇸", tha: "🇹🇭", tur: "🇹🇷", zho: "🇨🇳", bra: "🇧🇷"
+const LANG_FLAG_COUNTRY = {
+  ces: 'cz', deu: 'de', eng: 'us', eus: 'es', fas: 'ir', fra: 'fr', ita: 'it', nld: 'nl',
+  pcm: 'ng', pol: 'pl', por: 'pt', rus: 'ru', spa: 'es', tha: 'th', tur: 'tr', zho: 'cn', bra: 'br'
+};
+
+const getDatasetLangCode = (datasetName) => {
+  if (!datasetName) return null;
+  const parts = datasetName.split('.');
+  const lang = parts[0];
+  const treebank = parts[2];
+  // Brazilian Portuguese corpus should use Brazil flag instead of Portugal.
+  if (lang === 'por' && treebank === 'cstn') return 'bra';
+  return lang;
+};
+
+const getDatasetFlagSvgUrl = (datasetName) => {
+  const langCode = getDatasetLangCode(datasetName);
+  const countryCode = langCode ? LANG_FLAG_COUNTRY[langCode] : null;
+  return countryCode ? `https://flagcdn.com/${countryCode}.svg` : null;
+};
+
+const FLAG_VERTICAL_ZOOM = {
+  ng: 1.8,
+  br: 1.2,
+  nl: 1.22,
+  de: 1.3,
+  us: 1.5,
+  it: 1.22,
+  pl: 1.25,
+  ru: 1.22,
+  tr: 1.2
+};
+
+const FlagIcon = ({ datasetName, className = 'w-5 h-4 rounded-sm border border-black' }) => {
+  const langCode = getDatasetLangCode(datasetName);
+  const countryCode = langCode ? LANG_FLAG_COUNTRY[langCode] : null;
+  const flagUrl = getDatasetFlagSvgUrl(datasetName);
+  if (!flagUrl) return null;
+  const zoomY = countryCode && FLAG_VERTICAL_ZOOM[countryCode] ? FLAG_VERTICAL_ZOOM[countryCode] : 1;
+  return (
+    <span className={`${className} inline-block overflow-hidden`}>
+      <img
+        src={flagUrl}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        decoding="async"
+        className="w-full h-full block"
+        style={{ transform: zoomY === 1 ? undefined : `scaleY(${zoomY})`, transformOrigin: 'center' }}
+      />
+    </span>
+  );
+};
+
+const SignalIcon = ({ className = 'w-3.5 h-3.5 text-amber-500' }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+    <path d="M11 21h-1l1-7H7a1 1 0 0 1-.76-1.65l7-8A1 1 0 0 1 15 5l-1 6h4a1 1 0 0 1 .78 1.63l-7 8A1 1 0 0 1 11 21z" />
+  </svg>
+);
+
+const DatasetSelect = ({
+  value,
+  onChange,
+  isAuthenticated,
+  excludeDataset,
+  includeNone = false,
+  noneLabel = 'Select a dataset...',
+  buttonClassName = '',
+  dropdownClassName = ''
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onPointerDown = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    const onEscape = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onEscape);
+    };
+  }, [isOpen]);
+
+  const datasetOptions = Object.keys(DATASET_CONFIG).filter(name => name !== excludeDataset);
+  const options = includeNone
+    ? [{ value: 'none', label: noneLabel, hasSignals: false, restricted: false, isNone: true }, ...datasetOptions.map(name => ({
+        value: name,
+        label: name,
+        hasSignals: DATASET_CONFIG[name].hasSignals,
+        restricted: !!DATASET_CONFIG[name].restricted,
+        isNone: false
+      }))]
+    : datasetOptions.map(name => ({
+        value: name,
+        label: name,
+        hasSignals: DATASET_CONFIG[name].hasSignals,
+        restricted: !!DATASET_CONFIG[name].restricted,
+        isNone: false
+      }));
+
+  const selected = options.find(opt => opt.value === value) || options[0];
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setIsOpen(prev => !prev)}
+        className={`w-full flex items-center justify-between gap-2 bg-white border text-sm rounded-lg py-1.5 px-3 outline-none shadow-sm transition-colors focus:ring-2 focus:ring-blue-500 ${buttonClassName}`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span className="min-w-0 flex items-center gap-2">
+          {!selected?.isNone && <FlagIcon datasetName={selected?.value} />}
+          <span className="truncate text-slate-700">{selected?.label || noneLabel}</span>
+          {!selected?.isNone && selected?.hasSignals && <SignalIcon />}
+          {!selected?.isNone && selected?.restricted && !isAuthenticated && <Lock className="w-3.5 h-3.5 text-slate-500" />}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div
+          className={`absolute top-full left-0 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg z-40 max-h-72 overflow-auto ${dropdownClassName}`}
+          role="listbox"
+        >
+          {options.map(opt => {
+            const isSelected = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between gap-2 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}
+                role="option"
+                aria-selected={isSelected}
+              >
+                <span className="min-w-0 flex items-center gap-2">
+                  {!opt.isNone && <FlagIcon datasetName={opt.value} />}
+                  <span className="truncate text-slate-700">{opt.label}</span>
+                </span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {!opt.isNone && opt.hasSignals && <SignalIcon />}
+                  {!opt.isNone && opt.restricted && !isAuthenticated && <Lock className="w-3.5 h-3.5 text-slate-500" />}
+                  {isSelected && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const SIGNAL_COLORS = {
@@ -1850,22 +2010,16 @@ export default function App() {
           
           <div className="flex items-center gap-2 w-full sm:w-auto min-w-0 bg-orange-50 p-1.5 rounded-xl border border-orange-200 shadow-sm">
             <label className="text-sm font-semibold text-orange-800 whitespace-nowrap shrink-0 pl-1.5">Compare with:</label>
-            <div className="relative flex-1 min-w-0">
-              <select
-                value={compareDataset}
-                onChange={e => setCompareDataset(e.target.value)}
-                className="bg-white border border-orange-300 text-slate-700 text-sm rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 block py-1.5 px-3 outline-none cursor-pointer w-full"
-              >
-                <option value="none">Select a dataset...</option>
-                {Object.keys(DATASET_CONFIG).map(name => {
-                  if (name === dataset) return null;
-                  const isRestricted = DATASET_CONFIG[name].restricted;
-                  let langCode = name.split('.')[0];
-                  if (name.split('.')[2] == "cstn") langCode = "bra";
-                  const flag = LANG_FLAGS[langCode] ? `${LANG_FLAGS[langCode]} ` : '';
-                  return <option key={`compare-${name}`} value={name}>{flag}{name} {DATASET_CONFIG[name].hasSignals ? '⚡' : ''} {isRestricted && !isAuthenticated ? '🔒' : ''}</option>;
-                })}
-              </select>
+            <div className="relative w-[210px]">
+              <DatasetSelect
+                value={compareDataset || 'none'}
+                onChange={setCompareDataset}
+                isAuthenticated={isAuthenticated}
+                excludeDataset={dataset}
+                includeNone={true}
+                noneLabel="Select a dataset..."
+                buttonClassName="border-orange-300 focus:ring-orange-500"
+              />
               {compareDataset && compareDataset !== 'none' && (
                 <div className="absolute top-full left-0 mt-2.5 z-10">
                   <a href={`https://github.com/disrpt/latest/tree/main/data/${compareDataset}`} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-500 hover:text-blue-700 hover:underline flex items-center gap-1 font-medium transition-colors whitespace-nowrap">
@@ -2201,29 +2355,16 @@ export default function App() {
             </button>
             <div className="flex flex-col items-start sm:items-end gap-1">
               <div className="flex items-center gap-2">
-                <label htmlFor="dataset-select" className="text-sm font-semibold text-slate-600 flex items-center gap-1.5">
+                <span className="text-sm font-semibold text-slate-600 flex items-center gap-1.5">
                   Dataset:
-                </label>
-                <div className="relative">
-                  <select 
-                    id="dataset-select"
+                </span>
+                <div className="relative w-[210px]">
+                  <DatasetSelect
                     value={dataset}
-                    onChange={(e) => setDataset(e.target.value)}
-                    className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block py-1.5 px-3 outline-none shadow-sm cursor-pointer"
-                  >
-                    {Object.keys(DATASET_CONFIG).map(name => {
-                      const isRestricted = DATASET_CONFIG[name].restricted;
-                      const corpName = name.split('.')[2];
-                      let langCode = name.split('.')[0];
-                      if (corpName == "cstn"){langCode = "bra";}
-                      const flag = LANG_FLAGS[langCode] ? `${LANG_FLAGS[langCode]} ` : '';
-                      return (
-                        <option key={name} value={name}>
-                          {flag}{name} {DATASET_CONFIG[name].hasSignals ? '⚡' : ''} {isRestricted && !isAuthenticated ? '🔒' : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
+                    onChange={setDataset}
+                    isAuthenticated={isAuthenticated}
+                    buttonClassName="border-slate-300"
+                  />
                   <div className="absolute top-full left-0 mt-1 z-10">
                     <a href={`https://github.com/disrpt/latest/tree/main/data/${dataset}`} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-500 hover:text-blue-700 hover:underline flex items-center gap-1 font-medium transition-colors whitespace-nowrap">
                       <ExternalLink className="w-3 h-3" /> Documentation
@@ -2406,7 +2547,7 @@ export default function App() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-                  <span>⚡</span> Signal Type
+                  <SignalIcon className="w-3.5 h-3.5 text-amber-500" /> Signal Type
                 </label>
                 <div className="flex items-center gap-1.5">
                   <input
@@ -2434,7 +2575,7 @@ export default function App() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-                  <span>⚡</span> Signal Subtype
+                  <SignalIcon className="w-3.5 h-3.5 text-amber-500" /> Signal Subtype
                 </label>
                 <div className="flex items-center gap-1.5">
                   <input
